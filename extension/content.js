@@ -1,4 +1,13 @@
 (() => {
+  const isShortcut = event => event.ctrlKey && event.shiftKey && !event.altKey && event.code === 'Space';
+  if (window.top !== window) {
+    document.addEventListener('keydown', event => {
+      if (!isShortcut(event)) return;
+      event.preventDefault(); event.stopPropagation();
+      window.top.postMessage({ source: 'voicein-extension', type: 'VOICEIN_FRAME_TOGGLE' }, '*');
+    }, true);
+    return;
+  }
   if (document.getElementById('voicein-canvas-widget')) return;
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const defaults = { language: 'en-US', autoPunctuation: true, vocabulary: '' };
@@ -142,6 +151,8 @@
   recognition.onend = () => { flushFinal(); setListening(false); };
   const toggleDictation = () => { if (listening) return recognition.stop(); if (!captureTarget()) return setStatus('Click a Canvas text box first', 'error'); recognition.lang = language.value; try { recognition.start(); } catch { setStatus('Could not start microphone', 'error'); } };
   toggle.addEventListener('pointerdown', captureTarget); toggle.onclick = toggleDictation;
+  document.addEventListener('keydown', event => { if (isShortcut(event)) { event.preventDefault(); toggleDictation(); } }, true);
+  window.addEventListener('message', event => { if (event.data?.source === 'voicein-extension' && event.data?.type === 'VOICEIN_FRAME_TOGGLE') toggleDictation(); });
   chrome.runtime.onMessage.addListener(message => { if (message?.type === 'VOICEIN_TOGGLE') toggleDictation(); });
 })();
 
