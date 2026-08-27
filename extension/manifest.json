@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "VoiceIn for Canvas",
+  "version": "1.0.0",
+  "description": "Voice typing for Canvas LMS text fields and rich-text editors.",
+  "permissions": ["storage"],
+  "host_permissions": ["*://*.instructure.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["*://*.instructure.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "VoiceIn for Canvas"
+  }
+}
+
