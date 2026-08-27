@@ -7,7 +7,7 @@ async function refreshCustomDomains() {
   if (!matches.length) return;
   await chrome.scripting.registerContentScripts([{
     id: SCRIPT_ID, matches, js: ['content.js'], css: ['content.css'],
-    allFrames: false, runAt: 'document_idle', persistAcrossSessions: true
+    allFrames: true, matchOriginAsFallback: true, runAt: 'document_idle', persistAcrossSessions: true
   }]);
 }
 
