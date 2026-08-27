@@ -14,7 +14,14 @@
 
 先点击 Canvas 中的作业、讨论或消息输入框，再点击右下角的 **Start**。首次使用时允许麦克风权限。再次点击 **Stop** 可停止。
 
-扩展仅在 `*.instructure.com` 的 Canvas 页面运行。如果学校使用完全自定义的 Canvas 域名，需要在 `manifest.json` 的 `host_permissions` 和 `matches` 中加入该域名。
+### 标点口令
+
+- 英语：`comma`、`period` / `full stop`、`question mark`、`exclamation point`、`colon`、`semicolon`、`new line` / `new paragraph`
+- 中文：`逗号`、`句号`、`问号`、`感叹号`、`冒号`、`分号`、`换行` / `新段落`
+
+例如说 “Hello comma how are you question mark”，会输入 “Hello, how are you?”。
+
+扩展可在 `*.instructure.com` 以及 UCSC 的 `canvas.ucsc.edu` 页面运行。如果其他学校使用完全自定义的 Canvas 域名，需要在 `manifest.json` 的 `host_permissions` 和 `matches` 中加入该域名。
 
 ## 注意
 
