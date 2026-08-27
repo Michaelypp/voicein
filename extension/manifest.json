@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VoiceIn for Canvas",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Private, cursor-aware voice typing for Canvas LMS.",
   "permissions": ["storage", "scripting", "activeTab"],
   "optional_host_permissions": ["https://*/*"],
