@@ -1,31 +1,49 @@
-# VoiceIn for Canvas（Chrome 扩展）
+# VoiceIn for Canvas v2
 
-在 Canvas LMS 页面中直接进行英语或中文语音输入。默认语言为英语。
+当前版本：v2.0.2。该版本修复了标点片段与 Canvas 内部编辑器快捷键问题。
+
+在 Canvas LMS 的作业、讨论和消息编辑器中直接进行英语或中文语音输入。
 
 ## 安装
 
-1. 下载本仓库并解压。
-2. 在 Chrome 地址栏打开 `chrome://extensions`。
-3. 开启右上角的“开发者模式”。
-4. 点击“加载已解压的扩展程序”，选择本目录 `extension`。
-5. 打开学校的 Canvas 页面并刷新。
+1. 下载并解压发布包。
+2. 在 Chrome 打开 `chrome://extensions`。
+3. 开启“开发者模式”。
+4. 点击“加载已解压的扩展程序”，选择 `extension` 文件夹。
+5. 打开或刷新 Canvas 页面，并允许麦克风权限。
 
 ## 使用
 
-先点击 Canvas 中的作业、讨论或消息输入框，再点击右下角的 **Start**。首次使用时允许麦克风权限。再次点击 **Stop** 可停止。
+点击 Canvas 输入框，把光标放到需要插入文字的位置，然后点击右下角 **Start**。再次点击 **Stop** 停止。也可以按 `Ctrl + Shift + Space` 开始或停止。
 
-### 标点口令
+点击 Chrome 工具栏中的 VoiceIn 图标，可以设置默认语言、自动标点、自定义词汇和学校的自定义 Canvas 域名。
+
+## v2 功能
+
+- 在当前光标位置输入，尽量保留富文本格式
+- 停顿后自动添加句号，可在设置中关闭
+- 实时显示尚未确认的识别文字
+- 自动保存最近一次听写，并可恢复
+- 自定义词汇替换，例如 `you see ess see=UCSC`
+- 设置页面添加任意学校 Canvas 域名
+- `Ctrl + Shift + Space` 快捷键，可在 Canvas 内部富文本编辑器中使用
+- 清晰的听写状态和音量动画
+
+## 标点口令
 
 - 英语：`comma`、`period` / `full stop`、`question mark`、`exclamation point`、`colon`、`semicolon`、`new line` / `new paragraph`
 - 中文：`逗号`、`句号`、`问号`、`感叹号`、`冒号`、`分号`、`换行` / `新段落`
 
-例如说 “Hello comma how are you question mark”，会输入 “Hello, how are you?”。
+## 编辑口令
 
-扩展可在 `*.instructure.com` 以及 UCSC 的 `canvas.ucsc.edu` 页面运行。如果其他学校使用完全自定义的 Canvas 域名，需要在 `manifest.json` 的 `host_permissions` 和 `matches` 中加入该域名。
+- `undo` / `撤销`
+- `delete last sentence` / `删除上一句`
+- `select last paragraph` / `选择上一段`
+- `capitalize that` / `首字母大写`
 
-## 注意
+## 隐私
 
-- 推荐最新版 Chrome。
-- 学校管理的电脑可能禁止安装开发者模式扩展。
-- Canvas 的部分复杂编辑器可能需要先在编辑区内点击一次。
+VoiceIn 不包含自己的服务器，也不上传或分析 Canvas 内容。语音识别由 Chrome 的 Web Speech API 提供；浏览器或其语音服务提供方可能处理音频。自定义词汇和恢复草稿仅保存在本机 Chrome 扩展存储中。
+
+学校管理的电脑可能禁止安装开发者模式扩展。Canvas 编辑器版本不同，个别复杂格式可能需要先在编辑区中点击一次。
 

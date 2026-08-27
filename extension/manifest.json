@@ -1,13 +1,15 @@
 {
   "manifest_version": 3,
   "name": "VoiceIn for Canvas",
-  "version": "1.1.0",
-  "description": "Voice typing for Canvas LMS text fields and rich-text editors.",
-  "permissions": ["storage"],
+  "version": "2.0.2",
+  "description": "Private, cursor-aware voice typing for Canvas LMS.",
+  "permissions": ["storage", "scripting", "activeTab"],
+  "optional_host_permissions": ["https://*/*"],
   "host_permissions": [
     "*://*.instructure.com/*",
     "https://canvas.ucsc.edu/*"
   ],
+  "background": { "service_worker": "service-worker.js" },
   "content_scripts": [
     {
       "matches": [
@@ -17,11 +19,19 @@
       "js": ["content.js"],
       "css": ["content.css"],
       "all_frames": true,
+      "match_about_blank": true,
       "run_at": "document_idle"
     }
   ],
+  "commands": {
+    "toggle-dictation": {
+      "suggested_key": { "default": "Ctrl+Shift+Space" },
+      "description": "Start or stop VoiceIn dictation"
+    }
+  },
   "action": {
-    "default_title": "VoiceIn for Canvas"
+    "default_title": "VoiceIn settings",
+    "default_popup": "popup.html"
   }
 }
 

@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VoiceIn settings</title><link rel="stylesheet" href="popup.css"></head><body>
+<main><h1>VoiceIn</h1><p class="sub">Canvas voice typing settings</p>
+<label><span>Default language</span><select id="language"><option value="en-US">English</option><option value="zh-CN">普通话</option><option value="zh-TW">中文（台湾）</option><option value="zh-HK">粤语</option></select></label>
+<label class="check"><input id="auto-punctuation" type="checkbox"><span>Automatic punctuation after a pause</span></label>
+<label><span>Custom vocabulary</span><textarea id="vocabulary" placeholder="spoken phrase=preferred spelling&#10;you see ess see=UCSC"></textarea><small>One replacement per line.</small></label>
+<section><strong>Custom Canvas domain</strong><div class="row"><input id="domain" placeholder="canvas.school.edu"><button id="add-domain">Add</button></div><ul id="domains"></ul><p id="message" role="status"></p></section>
+<footer><span>Shortcut</span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Space</kbd></footer>
+</main><script src="popup.js"></script></body></html>
+
