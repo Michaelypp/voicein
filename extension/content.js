@@ -4,6 +4,7 @@
   const defaults = { language: 'en-US', autoPunctuation: true, vocabulary: '' };
   let settings = { ...defaults }, recognition, listening = false, activeTarget = null;
   let savedSelection = null, interimText = '', silenceTimer = null, lastInserted = '';
+  let pendingFinal = '', finalFlushTimer = null;
 
   const isEditable = el => el && (el.matches?.('textarea,input[type="text"],input:not([type]),[contenteditable="true"],body[contenteditable]') || el.closest?.('[contenteditable="true"]'));
   const editable = el => el?.closest?.('[contenteditable="true"]') || el;
@@ -87,7 +88,7 @@
   const formatCommands = value => applyVocabulary(value)
     .replace(/\b(new paragraph|new line)\b/gi, '\n').replace(/\bcomma\b/gi, ',').replace(/\b(period|full stop)\b/gi, '.')
     .replace(/\bquestion mark\b/gi, '?').replace(/\bexclamation (mark|point)\b/gi, '!').replace(/\bcolon\b/gi, ':').replace(/\bsemicolon\b/gi, ';')
-    .replace(/逗号/g, '，').replace(/句号/g, '。').replace(/问号/g, '？').replace(/感叹号/g, '！').replace(/冒号/g, '：').replace(/分号/g, '；').replace(/(换行|另起一行|新段落)/g, '\n')
+    .replace(/逗\s*号/g, '，').replace(/句\s*号/g, '。').replace(/问\s*号/g, '？').replace(/感\s*叹\s*号/g, '！').replace(/冒\s*号/g, '：').replace(/分\s*号/g, '；').replace(/(换\s*行|另\s*起\s*一\s*行|新\s*段\s*落)/g, '\n')
     .replace(/\s+([,.?!:;，。？！：；])/g, '$1').replace(/[ \t]*\n[ \t]*/g, '\n');
 
   const selectTextOffsets = (start, end) => {
@@ -115,13 +116,30 @@
       clearTimeout(silenceTimer); silenceTimer = setTimeout(() => insertAtCursor(chinese ? '。' : '.'), 1500);
     }
   };
+  const flushFinal = () => {
+    clearTimeout(finalFlushTimer);
+    const value = pendingFinal.trim(); pendingFinal = '';
+    if (value) appendFinal(value);
+    preview.textContent = interimText;
+  };
 
   if (!SpeechRecognition) { toggle.disabled = true; setStatus('Speech recognition unavailable', 'error'); return; }
   recognition = new SpeechRecognition(); recognition.continuous = true; recognition.interimResults = true;
   recognition.onstart = () => setListening(true);
-  recognition.onresult = event => { interimText = ''; for (let i = event.resultIndex; i < event.results.length; i++) { const chunk = event.results[i][0].transcript; if (event.results[i].isFinal) appendFinal(chunk); else interimText += chunk; } preview.textContent = interimText; };
+  recognition.onresult = event => {
+    interimText = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const chunk = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        const joiner = pendingFinal && !settings.language.startsWith('zh') ? ' ' : '';
+        pendingFinal += joiner + chunk;
+      } else interimText += chunk;
+    }
+    if (pendingFinal) { clearTimeout(finalFlushTimer); finalFlushTimer = setTimeout(flushFinal, 500); }
+    preview.textContent = `${pendingFinal}${pendingFinal && interimText ? ' ' : ''}${interimText}`;
+  };
   recognition.onerror = event => setStatus(event.error === 'not-allowed' ? 'Microphone permission denied' : `Error: ${event.error}`, 'error');
-  recognition.onend = () => setListening(false);
+  recognition.onend = () => { flushFinal(); setListening(false); };
   const toggleDictation = () => { if (listening) return recognition.stop(); if (!captureTarget()) return setStatus('Click a Canvas text box first', 'error'); recognition.lang = language.value; try { recognition.start(); } catch { setStatus('Could not start microphone', 'error'); } };
   toggle.addEventListener('pointerdown', captureTarget); toggle.onclick = toggleDictation;
   chrome.runtime.onMessage.addListener(message => { if (message?.type === 'VOICEIN_TOGGLE') toggleDictation(); });
