@@ -10,11 +10,11 @@
   }
   if (document.getElementById('voicein-canvas-widget')) return;
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const defaults = { language: 'en-US', autoPunctuation: true, vocabulary: '' };
+  const defaults = { language: 'en-US', autoPunctuation: true, vocabulary: '', typingSpeed: 'normal', reviewBeforeInsert: false };
   let settings = { ...defaults }, recognition, listening = false, activeTarget = null;
   let savedSelection = null, interimText = '', silenceTimer = null, lastInserted = '';
   let pendingFinal = '', finalFlushTimer = null;
-  let typingQueue = [], typingTimer = null;
+  let typingQueue = [], typingTimer = null, reviewDraft = '';
 
   const isEditable = el => el && (el.matches?.('textarea,input[type="text"],input:not([type]),[contenteditable="true"],body[contenteditable]') || el.closest?.('[contenteditable="true"]'));
   const editable = el => el?.closest?.('[contenteditable="true"]') || el;
@@ -27,6 +27,7 @@
   };
   const captureTarget = () => {
     const focused = deepActiveElement();
+    if (widget.contains(focused)) return !!activeTarget;
     if (isEditable(focused)) activeTarget = editable(focused);
     if (!activeTarget) return false;
     if (activeTarget.isContentEditable) {
@@ -48,11 +49,19 @@
     <span class="voicein-meter" aria-hidden="true"><i></i><i></i><i></i></span>
     <span class="voicein-status" aria-live="polite">Click a Canvas text box first</span>
     <span class="voicein-preview" aria-live="polite"></span>
+    <button type="button" id="voicein-finish" hidden>Finish now</button>
+    <div class="voicein-review" hidden>
+      <label for="voicein-review-text">Review transcript</label>
+      <textarea id="voicein-review-text" rows="4" aria-label="Edit transcript before inserting"></textarea>
+      <div class="voicein-review-actions"><button type="button" id="voicein-insert">Insert text</button><button type="button" id="voicein-discard">Discard</button></div>
+    </div>
     <button type="button" id="voicein-restore" hidden>Restore</button>
     <button type="button" class="voicein-close" aria-label="Hide VoiceIn">×</button>`;
   document.documentElement.appendChild(widget);
   const toggle = widget.querySelector('#voicein-toggle'), language = widget.querySelector('#voicein-language');
   const status = widget.querySelector('.voicein-status'), preview = widget.querySelector('.voicein-preview'), restore = widget.querySelector('#voicein-restore');
+  const finish = widget.querySelector('#voicein-finish'), reviewPanel = widget.querySelector('.voicein-review');
+  const reviewText = widget.querySelector('#voicein-review-text');
   const dragHandle = widget.querySelector('.voicein-drag');
   const clampPosition = (x, y) => {
     const rect = widget.getBoundingClientRect();
@@ -81,8 +90,8 @@
   dragHandle.addEventListener('pointercancel', endDrag);
   window.addEventListener('resize', () => { if (widget.style.left) clampPosition(parseFloat(widget.style.left), parseFloat(widget.style.top)); });
 
-  chrome.storage.local.get(['voiceinLanguage', 'autoPunctuation', 'vocabulary', 'voiceinDraft', 'voiceinWidgetPosition'], data => {
-    settings = { ...defaults, language: data.voiceinLanguage || defaults.language, autoPunctuation: data.autoPunctuation ?? true, vocabulary: data.vocabulary || '' };
+  chrome.storage.local.get(['voiceinLanguage', 'autoPunctuation', 'vocabulary', 'typingSpeed', 'reviewBeforeInsert', 'voiceinDraft', 'voiceinWidgetPosition'], data => {
+    settings = { ...defaults, language: data.voiceinLanguage || defaults.language, autoPunctuation: data.autoPunctuation ?? true, vocabulary: data.vocabulary || '', typingSpeed: data.typingSpeed || 'normal', reviewBeforeInsert: data.reviewBeforeInsert ?? false };
     language.value = settings.language;
     if (data.voiceinDraft?.text) restore.hidden = false;
     if (data.voiceinWidgetPosition) clampPosition(data.voiceinWidgetPosition.x, data.voiceinWidgetPosition.y);
@@ -91,6 +100,8 @@
     if (changes.autoPunctuation) settings.autoPunctuation = changes.autoPunctuation.newValue;
     if (changes.vocabulary) settings.vocabulary = changes.vocabulary.newValue || '';
     if (changes.voiceinLanguage) { settings.language = changes.voiceinLanguage.newValue; language.value = settings.language; }
+    if (changes.typingSpeed) settings.typingSpeed = changes.typingSpeed.newValue || 'normal';
+    if (changes.reviewBeforeInsert) settings.reviewBeforeInsert = changes.reviewBeforeInsert.newValue ?? false;
   });
   language.onchange = () => { settings.language = language.value; chrome.storage.local.set({ voiceinLanguage: language.value }); };
   widget.querySelector('.voicein-close').onclick = () => widget.remove();
@@ -118,24 +129,44 @@
     }
     lastInserted = text; saveDraft();
   };
+  const showReview = () => { reviewPanel.hidden = !reviewDraft; reviewText.value = reviewDraft; };
+  const appendReview = text => { reviewDraft = reviewText.value + text; showReview(); };
   const typeNext = () => {
     typingTimer = null;
     const character = typingQueue.shift();
     if (character === undefined) return;
     if (activeTarget?.isConnected) insertAtCursor(character);
     else typingQueue = [];
+    finish.hidden = !typingQueue.length;
     if (typingQueue.length) {
       // Vary the visible cadence slightly, with longer pauses at word and sentence boundaries.
       const delay = /[.!?。！？,，;；:：]/.test(character) ? 300 + Math.random() * 180
         : /\s/.test(character) ? 170 + Math.random() * 90
           : 110 + Math.random() * 80;
-      typingTimer = setTimeout(typeNext, delay);
+      const factor = { slow: 1.6, normal: 1, fast: 0.6 }[settings.typingSpeed] || 1;
+      typingTimer = setTimeout(typeNext, delay * factor);
     }
   };
   const typeGradually = text => {
     typingQueue.push(...Array.from(text));
+    finish.hidden = false;
     if (!typingTimer) typingTimer = setTimeout(typeNext, 0);
   };
+  finish.onclick = () => {
+    clearTimeout(typingTimer); typingTimer = null;
+    const rest = typingQueue.join(''); typingQueue = []; finish.hidden = true;
+    if (activeTarget?.isConnected) insertAtCursor(rest);
+  };
+  widget.querySelector('#voicein-insert').onclick = () => {
+    clearTimeout(silenceTimer);
+    let text = reviewText.value;
+    if (!activeTarget?.isConnected) return setStatus('Click a Canvas text box first', 'error');
+    const current = targetText() + typingQueue.join('');
+    if (!language.value.startsWith('zh') && current && !/[\s\n]$/.test(current) && !/^[\s,.?!:;]/.test(text)) text = ' ' + text;
+    reviewDraft = ''; showReview();
+    if (text) typeGradually(text);
+  };
+  widget.querySelector('#voicein-discard').onclick = () => { clearTimeout(silenceTimer); reviewDraft = ''; showReview(); };
   const targetText = () => activeTarget ? (activeTarget.isContentEditable ? activeTarget.innerText : activeTarget.value || '') : '';
   const saveDraft = () => chrome.storage.local.set({ voiceinDraft: { text: targetText(), url: location.href, timestamp: Date.now() } });
   restore.onclick = async () => { const { voiceinDraft } = await chrome.storage.local.get('voiceinDraft'); if (!captureTarget()) return setStatus('Click a text box first', 'error'); insertAtCursor(voiceinDraft?.text || ''); restore.hidden = true; setStatus('Draft restored'); };
@@ -166,12 +197,15 @@
   };
   const appendFinal = chunk => {
     clearTimeout(silenceTimer);
-    if (runCommand(chunk)) return; let text = formatCommands(chunk.trim()); if (!text) return;
-    const current = targetText() + typingQueue.join(''), chinese = language.value.startsWith('zh');
+    if (!settings.reviewBeforeInsert && runCommand(chunk)) return;
+    let text = formatCommands(chunk.trim()); if (!text) return;
+    const reviewing = settings.reviewBeforeInsert || !!reviewDraft;
+    const current = reviewing ? reviewText.value : targetText() + typingQueue.join('');
+    const chinese = language.value.startsWith('zh');
     if (!chinese && current && !/[\s\n]$/.test(current) && !/^[,.?!:;]/.test(text)) text = ' ' + text;
-    typeGradually(text);
+    if (reviewing) appendReview(text); else typeGradually(text);
     if (settings.autoPunctuation && !/[.!?。！？]\s*$/.test(text)) {
-      silenceTimer = setTimeout(() => typeGradually(chinese ? '。' : '.'), 1500);
+      silenceTimer = setTimeout(() => reviewing ? appendReview(chinese ? '。' : '.') : typeGradually(chinese ? '。' : '.'), 1500);
     }
   };
   const flushFinal = () => {
