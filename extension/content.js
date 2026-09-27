@@ -14,6 +14,7 @@
   let settings = { ...defaults }, recognition, listening = false, activeTarget = null;
   let savedSelection = null, interimText = '', silenceTimer = null, lastInserted = '';
   let pendingFinal = '', finalFlushTimer = null;
+  let typingQueue = [], typingTimer = null;
 
   const isEditable = el => el && (el.matches?.('textarea,input[type="text"],input:not([type]),[contenteditable="true"],body[contenteditable]') || el.closest?.('[contenteditable="true"]'));
   const editable = el => el?.closest?.('[contenteditable="true"]') || el;
@@ -41,6 +42,7 @@
   const widget = document.createElement('div');
   widget.id = 'voicein-canvas-widget';
   widget.innerHTML = `
+    <span class="voicein-drag" role="button" tabindex="0" aria-label="Drag VoiceIn window" title="Drag to move">⠿</span>
     <button type="button" id="voicein-toggle">🎙 Start</button>
     <select id="voicein-language" aria-label="Recognition language"><option value="en-US">English</option><option value="zh-CN">普通话</option><option value="zh-TW">中文（台湾）</option><option value="zh-HK">粤语</option></select>
     <span class="voicein-meter" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -51,11 +53,39 @@
   document.documentElement.appendChild(widget);
   const toggle = widget.querySelector('#voicein-toggle'), language = widget.querySelector('#voicein-language');
   const status = widget.querySelector('.voicein-status'), preview = widget.querySelector('.voicein-preview'), restore = widget.querySelector('#voicein-restore');
+  const dragHandle = widget.querySelector('.voicein-drag');
+  const clampPosition = (x, y) => {
+    const rect = widget.getBoundingClientRect();
+    widget.style.left = `${Math.max(0, Math.min(x, window.innerWidth - rect.width))}px`;
+    widget.style.top = `${Math.max(0, Math.min(y, window.innerHeight - rect.height))}px`;
+    widget.style.right = 'auto'; widget.style.bottom = 'auto';
+  };
+  let dragging = null;
+  dragHandle.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault(); event.stopPropagation();
+    const rect = widget.getBoundingClientRect();
+    dragging = { id: event.pointerId, dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+    dragHandle.setPointerCapture(event.pointerId);
+  });
+  dragHandle.addEventListener('pointermove', event => {
+    if (dragging?.id === event.pointerId) clampPosition(event.clientX - dragging.dx, event.clientY - dragging.dy);
+  });
+  const endDrag = event => {
+    if (dragging?.id !== event.pointerId) return;
+    dragging = null;
+    const rect = widget.getBoundingClientRect();
+    chrome.storage.local.set({ voiceinWidgetPosition: { x: rect.left, y: rect.top } });
+  };
+  dragHandle.addEventListener('pointerup', endDrag);
+  dragHandle.addEventListener('pointercancel', endDrag);
+  window.addEventListener('resize', () => { if (widget.style.left) clampPosition(parseFloat(widget.style.left), parseFloat(widget.style.top)); });
 
-  chrome.storage.local.get(['voiceinLanguage', 'autoPunctuation', 'vocabulary', 'voiceinDraft'], data => {
+  chrome.storage.local.get(['voiceinLanguage', 'autoPunctuation', 'vocabulary', 'voiceinDraft', 'voiceinWidgetPosition'], data => {
     settings = { ...defaults, language: data.voiceinLanguage || defaults.language, autoPunctuation: data.autoPunctuation ?? true, vocabulary: data.vocabulary || '' };
     language.value = settings.language;
     if (data.voiceinDraft?.text) restore.hidden = false;
+    if (data.voiceinWidgetPosition) clampPosition(data.voiceinWidgetPosition.x, data.voiceinWidgetPosition.y);
   });
   chrome.storage.onChanged.addListener(changes => {
     if (changes.autoPunctuation) settings.autoPunctuation = changes.autoPunctuation.newValue;
@@ -71,8 +101,8 @@
     setStatus(value ? 'Listening…' : 'Ready', value ? 'listening' : '');
     if (!value) { preview.textContent = ''; interimText = ''; clearTimeout(silenceTimer); }
   };
-  const dispatchInput = target => {
-    target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+  const dispatchInput = (target, text) => {
+    target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
     target.dispatchEvent(new Event('change', { bubbles: true }));
   };
   const insertAtCursor = text => {
@@ -81,12 +111,24 @@
       activeTarget.focus(); const selection = activeTarget.ownerDocument.getSelection(); selection.removeAllRanges();
       if (savedSelection) selection.addRange(savedSelection); else { const range = activeTarget.ownerDocument.createRange(); range.selectNodeContents(activeTarget); range.collapse(false); selection.addRange(range); }
       activeTarget.ownerDocument.execCommand('insertText', false, text);
-      if (selection.rangeCount) savedSelection = selection.getRangeAt(0).cloneRange(); dispatchInput(activeTarget);
+      if (selection.rangeCount) savedSelection = selection.getRangeAt(0).cloneRange(); dispatchInput(activeTarget, text);
     } else {
       activeTarget.focus(); const start = savedSelection?.start ?? activeTarget.value.length, end = savedSelection?.end ?? start;
-      activeTarget.setRangeText(text, start, end, 'end'); savedSelection = { start: start + text.length, end: start + text.length }; dispatchInput(activeTarget);
+      activeTarget.setRangeText(text, start, end, 'end'); savedSelection = { start: start + text.length, end: start + text.length }; dispatchInput(activeTarget, text);
     }
     lastInserted = text; saveDraft();
+  };
+  const typeNext = () => {
+    typingTimer = null;
+    const character = typingQueue.shift();
+    if (character === undefined) return;
+    if (activeTarget?.isConnected) insertAtCursor(character);
+    else typingQueue = [];
+    if (typingQueue.length) typingTimer = setTimeout(typeNext, 45);
+  };
+  const typeGradually = text => {
+    typingQueue.push(...Array.from(text));
+    if (!typingTimer) typingTimer = setTimeout(typeNext, 0);
   };
   const targetText = () => activeTarget ? (activeTarget.isContentEditable ? activeTarget.innerText : activeTarget.value || '') : '';
   const saveDraft = () => chrome.storage.local.set({ voiceinDraft: { text: targetText(), url: location.href, timestamp: Date.now() } });
@@ -107,7 +149,7 @@
     if (!startNode || !endNode) return; const range = activeTarget.ownerDocument.createRange(); range.setStart(startNode, startOffset); range.setEnd(endNode, endOffset);
     const selection = activeTarget.ownerDocument.getSelection(); selection.removeAllRanges(); selection.addRange(range); savedSelection = range.cloneRange(); activeTarget.focus();
   };
-  const replaceOffsets = (start, end, replacement) => { selectTextOffsets(start, end); if (activeTarget.isContentEditable) { activeTarget.ownerDocument.execCommand('insertText', false, replacement); captureTarget(); dispatchInput(activeTarget); } else insertAtCursor(replacement); saveDraft(); };
+  const replaceOffsets = (start, end, replacement) => { selectTextOffsets(start, end); if (activeTarget.isContentEditable) { activeTarget.ownerDocument.execCommand('insertText', false, replacement); captureTarget(); dispatchInput(activeTarget, replacement); } else insertAtCursor(replacement); saveDraft(); };
   const runCommand = raw => {
     const command = raw.trim().toLowerCase(); const text = targetText();
     if (/^(undo|撤销)$/.test(command)) { activeTarget?.ownerDocument.execCommand('undo'); saveDraft(); return true; }
@@ -120,9 +162,9 @@
     if (runCommand(chunk)) return; let text = formatCommands(chunk.trim()); if (!text) return;
     const current = targetText(), chinese = language.value.startsWith('zh');
     if (!chinese && current && !/[\s\n]$/.test(current) && !/^[,.?!:;]/.test(text)) text = ' ' + text;
-    insertAtCursor(text);
+    typeGradually(text);
     if (settings.autoPunctuation && !/[.!?。！？]\s*$/.test(text)) {
-      clearTimeout(silenceTimer); silenceTimer = setTimeout(() => insertAtCursor(chinese ? '。' : '.'), 1500);
+      clearTimeout(silenceTimer); silenceTimer = setTimeout(() => typeGradually(chinese ? '。' : '.'), 1500);
     }
   };
   const flushFinal = () => {
