@@ -124,7 +124,13 @@
     if (character === undefined) return;
     if (activeTarget?.isConnected) insertAtCursor(character);
     else typingQueue = [];
-    if (typingQueue.length) typingTimer = setTimeout(typeNext, 45);
+    if (typingQueue.length) {
+      // Vary the visible cadence slightly, with longer pauses at word and sentence boundaries.
+      const delay = /[.!?。！？,，;；:：]/.test(character) ? 300 + Math.random() * 180
+        : /\s/.test(character) ? 170 + Math.random() * 90
+          : 110 + Math.random() * 80;
+      typingTimer = setTimeout(typeNext, delay);
+    }
   };
   const typeGradually = text => {
     typingQueue.push(...Array.from(text));
@@ -159,12 +165,13 @@
     return false;
   };
   const appendFinal = chunk => {
+    clearTimeout(silenceTimer);
     if (runCommand(chunk)) return; let text = formatCommands(chunk.trim()); if (!text) return;
-    const current = targetText(), chinese = language.value.startsWith('zh');
+    const current = targetText() + typingQueue.join(''), chinese = language.value.startsWith('zh');
     if (!chinese && current && !/[\s\n]$/.test(current) && !/^[,.?!:;]/.test(text)) text = ' ' + text;
     typeGradually(text);
     if (settings.autoPunctuation && !/[.!?。！？]\s*$/.test(text)) {
-      clearTimeout(silenceTimer); silenceTimer = setTimeout(() => typeGradually(chinese ? '。' : '.'), 1500);
+      silenceTimer = setTimeout(() => typeGradually(chinese ? '。' : '.'), 1500);
     }
   };
   const flushFinal = () => {
